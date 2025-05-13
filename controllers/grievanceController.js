@@ -1,26 +1,27 @@
 const Grievance = require("../models/Grievance");
-const Department = require('../models/Department');
-const sendSMS = require('../utils/twilio');
-const User = require('../models/User');
+const Department = require("../models/Department");
 
-// @desc    Create new grievance
-// @route   POST /api/grievances
-// @access  Private
 const categoryToDepartment = {
-  Academic: 'ACAD001',
-  Administration: 'ADMIN001',
-  Infrastructure: 'INFRA001',
-  Hostel: 'HOSTEL001',
-  General: 'GEN001',
+  Academic: "ACAD001",
+  Administration: "ADMIN001",
+  Infrastructure: "INFRA001",
+  Hostel: "HOSTEL001",
+  General: "GEN001",
 };
 
 exports.createGrievance = async (req, res) => {
   try {
-    const { title, description, category, priority } = req.body;
+    const { title, description, category, priority, photo } = req.body;
 
-    const attachments = req.file
-      ? [{ url: req.file.path, public_id: req.file.filename }]
-      : [];
+    if (!title || !description || !category || !priority) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide all required fields: title, description, category, and priority.",
+      });
+    }
+
+    const attachments = photo ? [photo] : [];
 
     // Find department by category
     const departmentId = categoryToDepartment[category];
@@ -29,17 +30,23 @@ exports.createGrievance = async (req, res) => {
       department = await Department.findOne({ departmentId });
     }
 
-    const grievance = await Grievance.create({
-      title,
-      description,
-      category,
-      priority,
+    // ✅ Check if grievance already exists for this user with same title
+    let existingGrievance = await Grievance.findOne({
       submittedBy: req.user.id,
-      attachments,
-      department: department ? department._id : undefined,
+      title: { $regex: new RegExp("^" + title + "$", "i") },
     });
 
-    // Send SMS to user after grievance is created
+    if (existingGrievance) {
+      // 🔁 Update the existing grievance
+      existingGrievance.description = description;
+      existingGrievance.category = category;
+      existingGrievance.priority = priority;
+      existingGrievance.attachments = attachments;
+      existingGrievance.department = department ? department._id : undefined;
+
+      await existingGrievance.save();
+
+      // Send SMS to user after grievance is created
     try {
       const user = await User.findById(req.user.id);
       if (user && user.phoneNumber) {
@@ -53,9 +60,30 @@ exports.createGrievance = async (req, res) => {
       // Do not throw, just log the error
     }
 
-    res.status(201).json({
+      return res.status(200).json({
+        success: true,
+        message: "Grievance updated successfully.",
+        data: existingGrievance,
+      });
+    }
+
+    // ➕ Create a new grievance if not found
+    const newGrievance = new Grievance({
+      title,
+      description,
+      category,
+      priority,
+      submittedBy: req.user.id,
+      attachments,
+      department: department ? department._id : undefined,
+    });
+
+    await newGrievance.save();
+
+    return res.status(201).json({
       success: true,
-      data: grievance,
+      message: "Grievance created successfully.",
+      data: newGrievance,
     });
   } catch (err) {
     console.error("Grievance creation error:", err);
@@ -65,7 +93,6 @@ exports.createGrievance = async (req, res) => {
     });
   }
 };
-
 
 // @desc    Get all grievances
 // @route   GET /api/grievances
@@ -119,12 +146,10 @@ exports.getGrievance = async (req, res) => {
       req.user.role !== "admin" &&
       grievance.submittedBy._id.toString() !== req.user.id
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Not authorized to access this grievance",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to access this grievance",
+      });
     }
 
     res.status(200).json({ success: true, data: grievance });
@@ -133,72 +158,149 @@ exports.getGrievance = async (req, res) => {
   }
 };
 
+// GET /api/grievances/g/:grievanceNumber
+exports.getByGravienceNumber = async (req, res) => {
+  try {
+    const grievance = await Grievance.findOne({
+      grievanceNumber: req.params.grievanceNumber,
+    })
+      .populate("submittedBy", "name email")
+      .populate("assignedTo", "name email");
+
+    if (!grievance) {
+      return res.status(404).json({ message: "Grievance not found" });
+    }
+
+    res.json(grievance);
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+// GET /api/grievances/name/:title
+exports.getByGravienceTitle = async (req, res) => {
+  try {
+    const grievance = await Grievance.findOne({
+      title: req.params.title,
+    })
+      .populate("submittedBy", "name email")
+      .populate("assignedTo", "name email");
+
+    if (!grievance) {
+      return res.status(404).json({ message: "Grievance not found" });
+    }
+
+    res.json(grievance);
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 // @desc    Update grievance
 // @route   PUT /api/grievances/:id
 // @access  Private
 exports.updateGrievance = async (req, res) => {
   try {
-    let grievance = await Grievance.findById(req.params.id);
+    const grievance = await Grievance.findById(req.params.id);
     if (!grievance)
       return res
         .status(404)
         .json({ success: false, message: "Grievance not found" });
 
+    // Check permission: only admin or the user who submitted can update
     if (
       req.user.role !== "admin" &&
       grievance.submittedBy.toString() !== req.user.id
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Not authorized to update this grievance",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to update this grievance",
+      });
     }
 
-    // If admin is rejecting, delete the grievance
+    // Admin can reject (delete)
     if (req.user.role === "admin" && req.body.status === "Rejected") {
       await Grievance.findByIdAndDelete(req.params.id);
-      return res.status(200).json({ success: true, message: "Grievance rejected and deleted." });
-    }
-
-    // Department can update status of grievances assigned to them
-    if (req.user.role === 'department') {
-      if (!grievance.department || grievance.department.toString() !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Not authorized' });
-      }
-      if (req.body.status) {
-        grievance.status = req.body.status;
-      }
-      await grievance.save();
-      return res.status(200).json({ success: true, data: grievance });
-    }
-
-    // Allow admin to assign department
-    if (req.user.role === "admin" && req.body.department) {
-      grievance.department = req.body.department;
-    }
-
-    if (req.user.role !== "admin") {
-      const { title, description, category, priority } = req.body;
-      grievance.title = title || grievance.title;
-      grievance.description = description || grievance.description;
-      grievance.category = category || grievance.category;
-      grievance.priority = priority || grievance.priority;
-    }
-
-    if (req.file) {
-      grievance.attachments.push({
-        url: req.file.path,
-        public_id: req.file.filename,
+      return res.status(200).json({
+        success: true,
+        message: "Grievance rejected and deleted.",
       });
+    }
+
+    // Admin can update status directly
+    if (req.user.role === "admin" && req.body.status) {
+      grievance.status = req.body.status;
+    }
+
+    // Non-admin or editable fields
+    if (req.user.role !== "admin") {
+      const { title, description, category, priority, photo } = req.body;
+
+      if (title) grievance.title = title;
+      if (description) grievance.description = description;
+      if (category) grievance.category = category;
+      if (priority) grievance.priority = priority;
+
+      // Update department if category is changed
+      if (category && categoryToDepartment[category]) {
+        const department = await Department.findOne({
+          departmentId: categoryToDepartment[category],
+        });
+        if (department) grievance.department = department._id;
+      }
+
+      // Handle photo/attachment (overwrite or push based on your logic)
+      if (photo) {
+        grievance.attachments.push(photo);
+      }
     }
 
     await grievance.save();
 
     res.status(200).json({ success: true, data: grievance });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("Update grievance error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error: " + err.message });
+  }
+};
+
+// @desc    Delete grievance
+// @route   DELETE /api/grievances/:id
+exports.deleteGrievance = async (req, res) => {
+  try {
+    const grievance = await Grievance.findById(req.params.id);
+
+    if (!grievance) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Grievance not found" });
+    }
+
+    // Only admin or the user who submitted it can delete
+    if (
+      req.user.role !== "admin" &&
+      grievance.submittedBy.toString() !== req.user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to delete this grievance",
+      });
+    }
+
+    await Grievance.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Grievance deleted successfully",
+    });
+  } catch (err) {
+    console.error("Delete grievance error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error: " + err.message,
+    });
   }
 };
 

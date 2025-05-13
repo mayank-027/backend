@@ -1,64 +1,68 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const grievanceSchema = new mongoose.Schema({
+  grievanceNumber: {
+    type: String,
+    unique: true,
+  },
+
   title: {
     type: String,
-    required: [true, 'Please provide a title for your grievance'],
+    required: [true, "Please provide a title for your grievance"],
     trim: true,
-    maxlength: [100, 'Title cannot be more than 100 characters'],
+    maxlength: [100, "Title cannot be more than 100 characters"],
   },
   description: {
     type: String,
-    required: [true, 'Please provide a description of your grievance'],
+    required: [true, "Please provide a description of your grievance"],
     trim: true,
   },
   category: {
     type: String,
-    required: [true, 'Please select a category'],
-    enum: ['Academic', 'Administration', 'Infrastructure', 'Hostel', 'General'],
+    required: [true, "Please select a category"],
+    enum: ["Academic", "Administration", "Infrastructure", "Hostel", "General"],
   },
   status: {
     type: String,
-    enum: ['Pending', 'In Progress', 'Resolved', 'Rejected'],
-    default: 'Pending',
+    enum: ["Pending", "In Progress", "Resolved", "Rejected"],
+    default: "Pending",
   },
   priority: {
     type: String,
-    enum: ['Low', 'Medium', 'High'],
-    default: 'Medium',
+    enum: ["Low", "Medium", "High"],
+    default: "Medium",
   },
-  attachments: [{
-    url: String,
-    public_id: String,
-    uploadedAt: {
-      type: Date,
-      default: Date.now,
+  attachments: [
+    {
+      type: String, // Simple string for URL
     },
-  }],
+  ],
   submittedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
   },
-  comments: [{
-    text: {
-      type: String,
-      required: true,
+  comments: [
+    {
+      text: {
+        type: String,
+        required: true,
+      },
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  }],
+  ],
   createdAt: {
     type: Date,
     default: Date.now,
@@ -69,14 +73,23 @@ const grievanceSchema = new mongoose.Schema({
   },
   department: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department',
+    ref: "Department",
   },
 });
 
 // Update the updatedAt timestamp before saving
-grievanceSchema.pre('save', function(next) {
+grievanceSchema.pre("save", async function (next) {
   this.updatedAt = Date.now();
+
+  // Generate grievanceNumber if not already set
+  if (!this.grievanceNumber) {
+    // Example format: GRV-20240513-XXXX (date + random 4-digit code)
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const randomPart = Math.floor(1000 + Math.random() * 9000); // 4-digit random
+    this.grievanceNumber = `GRV-${datePart}-${randomPart}`;
+  }
+
   next();
 });
 
-module.exports = mongoose.model('Grievance', grievanceSchema); 
+module.exports = mongoose.model("Grievance", grievanceSchema);
