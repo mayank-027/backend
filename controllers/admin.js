@@ -1,5 +1,6 @@
 const Grievance = require('../models/Grievance');
 const User = require('../models/User');
+const sendSMS = require('../utils/twilio');
 
 // Get all grievances with filtering and pagination
 exports.getAllGrievances = async (req, res) => {
@@ -114,6 +115,22 @@ exports.updateGrievance = async (req, res) => {
     }
 
     await grievance.save();
+
+    // Send SMS if status is Resolved
+    if (status === "Resolved") {
+      try {
+        await grievance.populate('submittedBy');
+        const user = grievance.submittedBy;
+        if (user && user.phoneNumber) {
+          await sendSMS(
+            `+91${user.phoneNumber}`,
+            `Dear ${user.name}, your grievance "${grievance.title}" has been resolved.`
+          );
+        }
+      } catch (smsError) {
+        console.error('Failed to send resolved SMS:', smsError);
+      }
+    }
 
     res.status(200).json({
       success: true,
