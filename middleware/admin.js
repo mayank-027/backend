@@ -3,7 +3,7 @@ const User = require('../models/User');
 const adminAuth = async (req, res, next) => {
   try {
     // Check if user exists and is admin
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user._id);
     
     if (!user || user.role !== 'admin') {
       return res.status(403).json({

@@ -35,6 +35,10 @@ app.use('/api/department', departmentAuthRoutes);
 const departmentRoutes = require('./routes/department');
 app.use('/api/department', departmentRoutes);
 
+// Chat logs routes - FIXED: Added leading slash in the path
+const chatLogRoutes = require('./routes/chatLogRoutes');
+app.use('/api/chatlogs', chatLogRoutes);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -76,4 +80,4 @@ mongoose
   .catch(err => {
     console.error('MongoDB connection error:', err);
     process.exit(1);
-  }); 
+  });

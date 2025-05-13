@@ -109,7 +109,7 @@ exports.updateGrievance = async (req, res) => {
     if (comment) {
       grievance.comments.push({
         text: comment,
-        user: req.user.id
+        user: req.user._id
       });
     }
 

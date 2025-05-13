@@ -32,7 +32,7 @@ exports.createGrievance = async (req, res) => {
 
     // ✅ Check if grievance already exists for this user with same title
     let existingGrievance = await Grievance.findOne({
-      submittedBy: req.user.id,
+      submittedBy: req.user._id,
       title: { $regex: new RegExp("^" + title + "$", "i") },
     });
 
@@ -48,7 +48,7 @@ exports.createGrievance = async (req, res) => {
 
       // Send SMS to user after grievance is created
     try {
-      const user = await User.findById(req.user.id);
+      const user = await User.findById(req.user._id);
       if (user && user.phoneNumber) {
         await sendSMS(
           `+91${user.phoneNumber}`,
@@ -73,7 +73,7 @@ exports.createGrievance = async (req, res) => {
       description,
       category,
       priority,
-      submittedBy: req.user.id,
+      submittedBy: req.user._id,
       attachments,
       department: department ? department._id : undefined,
     });
@@ -101,7 +101,7 @@ exports.getGrievances = async (req, res) => {
   try {
     let query =
       req.user.role !== "admin"
-        ? Grievance.find({ submittedBy: req.user.id })
+        ? Grievance.find({ submittedBy: req.user._id })
         : Grievance.find();
 
     if (req.query.status) query = query.find({ status: req.query.status });
@@ -144,7 +144,7 @@ exports.getGrievance = async (req, res) => {
 
     if (
       req.user.role !== "admin" &&
-      grievance.submittedBy._id.toString() !== req.user.id
+      grievance.submittedBy._id.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -163,6 +163,7 @@ exports.getByGravienceNumber = async (req, res) => {
   try {
     const grievance = await Grievance.findOne({
       grievanceNumber: req.params.grievanceNumber,
+      submittedBy: req.user._id
     })
       .populate("submittedBy", "name email")
       .populate("assignedTo", "name email");
@@ -182,6 +183,7 @@ exports.getByGravienceTitle = async (req, res) => {
   try {
     const grievance = await Grievance.findOne({
       title: req.params.title,
+      submittedBy: req.user._id
     })
       .populate("submittedBy", "name email")
       .populate("assignedTo", "name email");
@@ -210,7 +212,7 @@ exports.updateGrievance = async (req, res) => {
     // Check permission: only admin or the user who submitted can update
     if (
       req.user.role !== "admin" &&
-      grievance.submittedBy.toString() !== req.user.id
+      grievance.submittedBy.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -281,7 +283,7 @@ exports.deleteGrievance = async (req, res) => {
     // Only admin or the user who submitted it can delete
     if (
       req.user.role !== "admin" &&
-      grievance.submittedBy.toString() !== req.user.id
+      grievance.submittedBy.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -317,14 +319,14 @@ exports.addComment = async (req, res) => {
 
     if (
       req.user.role !== "admin" &&
-      grievance.submittedBy.toString() !== req.user.id
+      grievance.submittedBy.toString() !== req.user._id.toString()
     ) {
       return res
         .status(403)
         .json({ success: false, message: "Not authorized to comment" });
     }
 
-    grievance.comments.push({ text: req.body.text, user: req.user.id });
+    grievance.comments.push({ text: req.body.text, user: req.user._id });
     await grievance.save();
 
     res.status(200).json({ success: true, data: grievance });
