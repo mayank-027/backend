@@ -110,7 +110,7 @@ exports.updateGrievance = async (req, res) => {
     if (comment) {
       grievance.comments.push({
         text: comment,
-        user: req.user._id
+        user: req.user.id
       });
     }
 
@@ -135,7 +135,7 @@ exports.updateGrievance = async (req, res) => {
     res.status(200).json({
       success: true,
       data: grievance
-    });
+    });                                                         
   } catch (error) {
     res.status(500).json({
       success: false,
