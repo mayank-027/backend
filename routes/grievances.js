@@ -6,28 +6,28 @@ const {
   getGrievance,
   updateGrievance,
   addComment,
+  getByGravienceNumber,
+  deleteGrievance,
+  getByGravienceTitle,
   // getAttachment, // ❌ REMOVE this line
 } = require("../controllers/grievanceController");
 const { protect } = require("../middleware/auth");
-const upload = require("../middleware/upload");
-const multerErrorHandler = require("../utils/multerErrorHandler");
 
 // Protect all routes
 router.use(protect);
 
 // Routes
-router
-  .route("/")
-  .post(upload.single("photo"), multerErrorHandler, createGrievance)
-  .get(getGrievances);
+router.route("/").post(createGrievance).get(getGrievances);
 
 router
   .route("/:id")
   .get(getGrievance)
-  .put(upload.single("photo"), updateGrievance);
+  .put(updateGrievance)
+  .delete(deleteGrievance);
+
+router.route("/g/:grievanceNumber").get(getByGravienceNumber);
+router.route("/name/:title").get(getByGravienceTitle);
 
 router.post("/:id/comments", addComment);
-
-// router.get('/attachments/:filename', getAttachment); ❌ REMOVE this route
 
 module.exports = router;

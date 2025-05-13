@@ -5,7 +5,7 @@ const Grievance = require('../models/Grievance');
 // @access  Private (department)
 exports.getDepartmentGrievances = async (req, res) => {
   try {
-    const grievances = await Grievance.find({ department: req.user.id })
+    const grievances = await Grievance.find({ department: req.user._id })
       .populate('submittedBy', 'name email studentId')
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: grievances });
